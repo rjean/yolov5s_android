@@ -6,7 +6,7 @@ RUN apt-get update --fix-missing
 RUN apt-get install -y python3 python3-pip
 RUN pip3 install --upgrade pip
 RUN pip3 install tensorflow-gpu==2.4.0
-RUN pip3 install torch==1.7.0
+RUN pip3 install torch
 RUN pip3 install tensorflow-datasets
 
 # install openvino

@@ -29,7 +29,7 @@ public class ImageProcess {
             Color.parseColor("#AA33AA"),
             Color.parseColor("#0D0068")
     };
-    static public Bitmap drawBboxes(List<TfliteRunner.Recognition> bboxes, Bitmap bitmap, int inputSize) {
+    static public Bitmap drawBboxes(List<TfliteRunner.Recognition> bboxes, Bitmap bitmap, int height, int width) {
         Bitmap mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true);
         bitmap.recycle();
         final Canvas canvas = new Canvas(mutableBitmap);
@@ -41,10 +41,10 @@ public class ImageProcess {
             int color_idx = bbox.getClass_idx() % COLORS.length;
             paint.setColor(COLORS[color_idx]);
             RectF location = bbox.getLocation();
-            float left = location.left * bitmap.getWidth() / inputSize;
-            float right = location.right * bitmap.getWidth() / inputSize;
-            float top = location.top * bitmap.getHeight() / inputSize;
-            float bottom = location.bottom * bitmap.getHeight() / inputSize;
+            float left = location.left * bitmap.getWidth() / width;
+            float right = location.right * bitmap.getWidth() / width;
+            float top = location.top * bitmap.getHeight() / height;
+            float bottom = location.bottom * bitmap.getHeight() / height;
             RectF drawBoxRect = new RectF(left, top, right, bottom);
             canvas.drawRect(drawBoxRect, paint);
             String labelString = String.format("%s %.2f", bbox.getTitle(), (100 * bbox.getConfidence()));

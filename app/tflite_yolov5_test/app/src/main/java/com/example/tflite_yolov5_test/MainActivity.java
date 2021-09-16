@@ -19,6 +19,7 @@ import android.os.HandlerThread;
 import android.provider.DocumentsContract;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.RadioButton;
@@ -47,6 +48,8 @@ public class MainActivity extends AppCompatActivity {
     final int REQUEST_OPEN_DIRECTORY = 9999;
     //permission
     private int inputSize = -1;
+    private int inputHeight = -1;
+    private int inputWidth= -1;
     private File[] process_files = null;
     private final int REQUEST_PERMISSION = 1000;
     private final String[] PERMISSIONS = {
@@ -152,10 +155,10 @@ public class MainActivity extends AppCompatActivity {
         for(TfliteRunner.Recognition bbox : bboxes){
             //clamp and scale to original image size
             RectF location = bbox.getLocation();
-            float x1 = Math.min(Math.max(0, location.left), this.inputSize) * orig_w / (float)this.inputSize;
-            float y1 = Math.min(Math.max(0, location.top), this.inputSize) * orig_h / (float)this.inputSize;
-            float x2 = Math.min(Math.max(0, location.right), this.inputSize) * orig_w / (float)this.inputSize;
-            float y2 = Math.min(Math.max(0, location.bottom), this.inputSize) * orig_h / (float)this.inputSize;
+            float x1 = Math.min(Math.max(0, location.left), this.inputWidth) * orig_w / (float)this.inputWidth;
+            float y1 = Math.min(Math.max(0, location.top), this.inputHeight) * orig_h / (float)this.inputHeight;
+            float x2 = Math.min(Math.max(0, location.right), this.inputWidth) * orig_w / (float)this.inputWidth;
+            float y2 = Math.min(Math.max(0, location.bottom), this.inputHeight) * orig_h / (float)this.inputHeight;
             float x = x1;
             float y = y1;
             float w = x2 - x1;
@@ -195,7 +198,8 @@ public class MainActivity extends AppCompatActivity {
     public void OnRunInferenceButtonClick(View view){
         TfliteRunner runner;
         TfliteRunMode.Mode runmode = getRunModeFromGUI();
-        this.inputSize = getInputSizeFromGUI();
+        this.inputHeight = getInputHeightFromGUI();
+        this.inputWidth = getInputWidthFromGUI();
         //validation
         if (this.process_files == null || this.process_files.length == 0){
             showErrorDialog("Please select image or directory.");
@@ -209,7 +213,10 @@ public class MainActivity extends AppCompatActivity {
         //open model
         try {
             Context context = getApplicationContext();
-            runner = new TfliteRunner(context, runmode, this.inputSize, getConfThreshFromGUI(), getIoUThreshFromGUI());
+            CheckBox cbSpeedLimit = findViewById(R.id.cbSpeedLimit);
+            int categories = 80;
+            if (cbSpeedLimit.isChecked()) categories=1;
+            runner = new TfliteRunner(context, runmode, inputHeight, inputWidth, getConfThreshFromGUI(), getIoUThreshFromGUI(), categories);
         } catch (Exception e) {
             showErrorDialog("Model load failed: " + e.getMessage());
             return;
@@ -252,10 +259,13 @@ public class MainActivity extends AppCompatActivity {
                                 File file = process_files[i];
                                 InputStream is = new FileInputStream(file);
                                 Bitmap bitmap = BitmapFactory.decodeStream(is);
-                                Bitmap resized = TfliteRunner.getResizedImage(bitmap, inputSize);
+
+                                Bitmap resized = TfliteRunner.getResizedImage(bitmap, inputHeight, inputWidth);
                                 runner.setInput(resized);
                                 List<TfliteRunner.Recognition> bboxes = runner.runInference();
-                                Bitmap resBitmap = ImageProcess.drawBboxes(bboxes, bitmap, getInputSizeFromGUI());
+                                int height = getInputHeightFromGUI();
+                                int width = getInputWidthFromGUI();
+                                Bitmap resBitmap = ImageProcess.drawBboxes(bboxes, bitmap, height, width);
                                 ArrayList<HashMap<String, Object>> bboxmaps = bboxesToMap(file, bboxes, bitmap.getHeight(), bitmap.getWidth());
                                 resList.addAll(bboxmaps);
                                 int ii = i;
@@ -405,6 +415,7 @@ public class MainActivity extends AppCompatActivity {
         boolean precision_int8 = ((RadioButton)findViewById(R.id.radioButton_runInt8)).isChecked();
         boolean delegate_none = ((RadioButton)findViewById(R.id.radioButton_delegateNone)).isChecked();
         boolean delegate_nnapi = ((RadioButton)findViewById(R.id.radioButton_delegateNNAPI)).isChecked();
+        boolean speed_limit = ((CheckBox)findViewById(R.id.cbSpeedLimit)).isChecked();
         boolean[] gui_selected = {model_float, model_int8, precision_fp32, precision_fp16, precision_int8, delegate_none, delegate_nnapi};
         final Map<TfliteRunMode.Mode, boolean[]> candidates = new HashMap<TfliteRunMode.Mode, boolean[]>(){{
             put(TfliteRunMode.Mode.NONE_FP32,      new boolean[]{true, false, true, false, false, true, false});
@@ -420,7 +431,16 @@ public class MainActivity extends AppCompatActivity {
         //not found
         return null;
     }
-    public int getInputSizeFromGUI(){
+    public int getInputWidthFromGUI(){
+        CheckBox speedLimit = findViewById(R.id.cbSpeedLimit);
+        if (speedLimit.isChecked()) return 1024;
+        RadioButton input_640 = findViewById(R.id.radioButton_640);
+        if (input_640.isChecked()) return 640;
+        else return 320;
+    }
+    public int getInputHeightFromGUI(){
+        CheckBox speedLimit = findViewById(R.id.cbSpeedLimit);
+        if (speedLimit.isChecked()) return 320;
         RadioButton input_640 = findViewById(R.id.radioButton_640);
         if (input_640.isChecked()) return 640;
         else return 320;

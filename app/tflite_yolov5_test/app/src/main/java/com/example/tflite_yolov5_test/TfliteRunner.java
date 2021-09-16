@@ -33,19 +33,22 @@ public class TfliteRunner {
     static {
         System.loadLibrary("native-lib");
     }
-    public native float[][] postprocess(float[][][][] out1, float[][][][] out2, float[][][][] out3, int inputSize, float conf_thresh, float iou_thresh);
+    public native float[][] postprocess(float[][][][] out1, float[][][][] out2, float[][][][] out3, int inputHeight, int inputWidth, float conf_thresh, float iou_thresh, int num_categories);
     private Interpreter tfliteInterpreter;
     Mode runmode;
     int inputSize;
+    int categories;
+    int inputHeight;
+    int inputWidth;
     class InferenceRawResult{
         public float[][][][] out1;
         public float[][][][] out2;
         public float[][][][] out3;
 
-        public InferenceRawResult(int inputSize){
-            this.out1 = new float[1][inputSize/8][inputSize/8][3*85];
-            this.out2 = new float[1][inputSize/16][inputSize/16][3*85];
-            this.out3 = new float[1][inputSize/32][inputSize/32][3*85];
+        public InferenceRawResult(int height, int width, int categories){
+            this.out1 = new float[1][height/8][width/8][3*(5+categories)];
+            this.out2 = new float[1][height/16][width/16][3*(5+categories)];
+            this.out3 = new float[1][height/32][width/32][3*(5+categories)];
         }
     }
     Object[] inputArray;
@@ -54,13 +57,22 @@ public class TfliteRunner {
     float conf_thresh;
     float iou_thresh;
 
-    public TfliteRunner(Context context, Mode runmode, int inputSize, float conf_thresh, float iou_thresh) throws Exception{
+    public TfliteRunner(Context context, Mode runmode, int height, int width, float conf_thresh, float iou_thresh, int categories) throws Exception{
         this.runmode = runmode;
-        this.rawres = new InferenceRawResult(inputSize);
-        this.inputSize = inputSize;
+        this.rawres = new InferenceRawResult(height, width, categories);
+        this.inputHeight = height;
+        this.inputWidth = width;
         this.conf_thresh = conf_thresh;
         this.iou_thresh = iou_thresh;
-        loadModel(context, runmode, inputSize, 4);
+        this.categories = categories;
+        if (categories==1)
+        {
+            loadModel(context, Mode.NONE_INT8, height, width, 4, true);
+        }
+        else
+        {
+            loadModel(context, runmode, height, width, 4, false);
+        }
     }
     private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
             throws IOException {
@@ -71,7 +83,7 @@ public class TfliteRunner {
         long declaredLength = fileDescriptor.getDeclaredLength();
         return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
     }
-    public void loadModel(Context context, Mode runmode, int inputSize, int num_threads) throws Exception{
+    public void loadModel(Context context, Mode runmode, int height, int width, int num_threads, boolean speed_limit) throws Exception{
         Interpreter.Options options = new Interpreter.Options();
         NnApiDelegate.Options nnapi_options = new NnApiDelegate.Options();
         options.setNumThreads(num_threads);
@@ -106,27 +118,31 @@ public class TfliteRunner {
         }
         boolean quantized_mode = TfliteRunMode.isQuantizedMode(runmode);
         String precision_str = quantized_mode ? "int8" : "fp32";
-        String modelname = "yolov5s_" + precision_str + "_" + String.valueOf(inputSize) + ".tflite";
+        String modelname = "yolov5s_" + precision_str + "_" + String.valueOf(inputWidth) + ".tflite";
+        if (speed_limit)  {
+            modelname = "speedlimit-1024-320-int8-new-output.tflite";
+            this.runmode = Mode.NONE_INT8;
+        }
         MappedByteBuffer tflite_model_buf = TfliteRunner.loadModelFile(context.getAssets(), modelname);
         this.tfliteInterpreter = new Interpreter(tflite_model_buf, options);
     }
-    static public Bitmap getResizedImage(Bitmap bitmap, int inputSize) {
-        Bitmap resized = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true);
+    static public Bitmap getResizedImage(Bitmap bitmap, int height, int width) {
+        Bitmap resized = Bitmap.createScaledBitmap(bitmap, width, height, true);
         return resized;
     }
     public void setInput(Bitmap resizedbitmap){
         boolean quantized_mode = TfliteRunMode.isQuantizedMode(this.runmode);
         int numBytesPerChannel = quantized_mode ? numBytesPerChannel_int : numBytesPerChannel_float;
-        ByteBuffer imgData = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * numBytesPerChannel);
+        ByteBuffer imgData = ByteBuffer.allocateDirect(1 * inputHeight * inputWidth * 3 * numBytesPerChannel);
 
-        int[] intValues = new int[inputSize * inputSize];
+        int[] intValues = new int[inputHeight * inputWidth];
         resizedbitmap.getPixels(intValues, 0, resizedbitmap.getWidth(), 0, 0, resizedbitmap.getWidth(), resizedbitmap.getHeight());
 
         imgData.order(ByteOrder.nativeOrder());
         imgData.rewind();
-        for (int i = 0; i < inputSize; ++i) {
-            for (int j = 0; j < inputSize; ++j) {
-                int pixelValue = intValues[i * inputSize + j];
+        for (int i = 0; i < inputHeight; ++i) {
+            for (int j = 0; j < inputWidth; ++j) {
+                int pixelValue = intValues[i * inputWidth + j];
                 if (quantized_mode) {
                     // Quantized model
                     imgData.put((byte) ((pixelValue >> 16) & 0xFF));
@@ -165,9 +181,11 @@ public class TfliteRunner {
         float[][] bbox_arrs = postprocess(this.rawres.out1,
                 this.rawres.out2,
                 this.rawres.out3,
-                this.inputSize,
+                this.inputHeight,
+                this.inputWidth,
                 this.conf_thresh,
-                this.iou_thresh);
+                this.iou_thresh,
+                this.categories);
         long end2 = System.currentTimeMillis();
         this.postprocess_elapsed = (int)(end2 - end);
         for(float[] bbox_arr: bbox_arrs){

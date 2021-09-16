@@ -217,6 +217,13 @@
 
                 </LinearLayout>
 
+                <CheckBox
+                    android:id="@+id/cbSpeedLimit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Speed Limit 1024x320" />
+
             </LinearLayout>
 
             <Button

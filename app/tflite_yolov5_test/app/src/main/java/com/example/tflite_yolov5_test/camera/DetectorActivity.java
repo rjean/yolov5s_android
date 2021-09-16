@@ -137,7 +137,7 @@ public class DetectorActivity extends CameraActivity implements ImageReader.OnIm
         int cropSize = TF_OD_API_INPUT_SIZE;
 
         try {
-            detector = new TfliteRunner(this, MODE, TF_OD_API_INPUT_SIZE, 0.25f, 0.45f);
+            detector = new TfliteRunner(this, MODE, TF_OD_API_INPUT_SIZE, TF_OD_API_INPUT_SIZE,0.25f, 0.45f, 80);
             cropSize = TF_OD_API_INPUT_SIZE;
         } catch (final Exception e) {
             e.printStackTrace();

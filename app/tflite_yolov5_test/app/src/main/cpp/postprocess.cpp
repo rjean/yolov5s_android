@@ -21,21 +21,24 @@ void detector(
         vector<bbox>* bbox_candidates,
         JNIEnv *env,
         jobjectArray input,
-        const int gridnum,
+        const int gridnum_y,
+        const int gridnum_x,
         const int strides,
-        const int anchorgrid[3][2],
-        const float conf_thresh){
+        const int (&anchorgrid)[3][2],
+        const float conf_thresh,
+        const int num_categories
+        ){
     float revsigmoid_conf = revsigmoid(conf_thresh);
     //Warning: For now, we assume batch_size is always 1.
     for(int bi = 0; bi < 1; bi++){
         jobjectArray ptr_d0 = (jobjectArray)env->GetObjectArrayElement(input , bi);
-        for(int gy = 0; gy < gridnum; gy++){
+        for(int gy = 0; gy < gridnum_y; gy++){
             jobjectArray ptr_d1 = (jobjectArray)env->GetObjectArrayElement(ptr_d0 ,gy);
-            for(int gx = 0; gx < gridnum; gx++){
+            for(int gx = 0; gx < gridnum_x; gx++){
                 jobjectArray ptr_d2 = (jobjectArray)env->GetObjectArrayElement(ptr_d1 ,gx);
                 auto elmptr = env->GetFloatArrayElements((jfloatArray)ptr_d2 , nullptr);
                 for(int ch = 0; ch < 3; ch++){
-                    int offset = 85 * ch;
+                    int offset = (num_categories+5) * ch;
                     auto elmptr_ch = elmptr + offset;
                     //don't apply sigmoid to all bbox candidates for efficiency
                     float obj_conf_unsigmoid = elmptr_ch[4];
@@ -44,7 +47,7 @@ void detector(
                         //get maximum conf class
                         float max_class_conf = elmptr_ch[5];
                         int max_class_idx = 0;
-                        for(int class_idx = 1; class_idx < CLASS_NUM; class_idx++){
+                        for(int class_idx = 1; class_idx < num_categories; class_idx++){
                             float class_conf = elmptr_ch[class_idx + 5];
                             if (class_conf > max_class_conf){
                                 max_class_conf = class_conf;
@@ -87,22 +90,45 @@ extern "C" jobjectArray Java_com_example_tflite_1yolov5_1test_TfliteRunner_postp
         jobjectArray input1,//80x80 or 40x40
         jobjectArray input2, //40x40 or 20x20,
         jobjectArray input3, //20x20 or 10x10
-        jint input_size,
+        jint input_height,
+        jint input_width,
         jfloat conf_thresh,
-        jfloat iou_thresh){
+        jfloat iou_thresh,
+        jint num_categories
+        ){
     //conf
-    const int anchorgrids[3][3][2]  = {
+
+    int anchorgrids[3][3][2]  = {
         {{10, 13}, {16, 30}, {33, 23}}, //80
         {{30, 61}, {62, 45}, {59, 119}}, //40
         {{116, 90}, {156, 198}, {373, 326}} //20
     };
+    int anchorgrids_sl[3][3][2]  = {
+            {{5, 7}, {13, 16}, {21, 25}}, //80
+            {{30, 36}, {45, 55}, {60, 77}}, //40
+            {{88, 110}, {138, 167}, {215, 275}} //20
+    };
+    if (num_categories==1)
+    {
+        for (int i=0;i<3;i++)
+        {
+            for (int j=0;j<3;j++)
+            {
+                for (int k=0;k<2;k++)
+                {
+                    anchorgrids[i][j][k] = anchorgrids_sl[i][j][k];
+                }
+            }
+        }
+    }
+
     const int strides[3] = {8, 16, 32};
 
     vector<bbox> bbox_candidates; //TODO: reserve
     //Detector
-    detector(&bbox_candidates, env, input1, input_size / 8, strides[0], anchorgrids[0], conf_thresh);
-    detector(&bbox_candidates, env, input2, input_size / 16, strides[1], anchorgrids[1], conf_thresh);
-    detector(&bbox_candidates, env, input3, input_size / 32, strides[2], anchorgrids[2], conf_thresh);
+    detector(&bbox_candidates, env, input1,  input_height/ 8, input_width/ 8, strides[0], anchorgrids[0], conf_thresh, num_categories);
+    detector(&bbox_candidates, env, input2, input_height / 16, input_width/ 16, strides[1], anchorgrids[1], conf_thresh, num_categories);
+    detector(&bbox_candidates, env, input3, input_height / 32, input_width/ 32, strides[2], anchorgrids[2], conf_thresh, num_categories);
     //non-max-suppression
     vector<bbox> nms_results = nms(bbox_candidates, iou_thresh);
 
